@@ -118,11 +118,11 @@ public class water : MonoBehaviour
 
         int[] ptr = Height[page];
 
-        Color[] TexPix = objTex.GetPixels(0);
-        Color[] NormPix = objNorms.GetPixels(0);
+        Color32[] TexPix = objTex.GetPixels32(0);
+        Color32[] NormPix = objNorms.GetPixels32(0);
 
         Vector3 v1 = new Vector3(1, 0, 0);
-        Vector3 v2 = new Vector3(0, 1, 0);
+        Vector3 v2 = new Vector3(0, 0, 1);
         Vector3 n;
 
 
@@ -137,8 +137,8 @@ public class water : MonoBehaviour
                 dx = ptr[offset] - ptr[offset + 1];
                 dy = ptr[offset] - ptr[offset + WATERWID];
 
-                v1.z = dx;
-                v2.z = dy;
+                v1.y = dx;
+                v2.y = dy;
 
                 n = Vector3.Cross(v1, v2);
                 n.Normalize();
@@ -164,23 +164,22 @@ public class water : MonoBehaviour
                 TexPix[offset].b = npix.b;
                 TexPix[offset].a = 255;
 
-                /*
-                NormPix[offset].a = norm.r;
-                NormPix[offset].g = norm.b;
-                //NormPix[offset].b = norm.b;
-                */
+                //objTex.SetPixel(tx, ty, npix);
+
+                NormPix[offset].a = norm.b;
+                NormPix[offset].r = norm.r;
+                NormPix[offset].g = norm.r;
+                NormPix[offset].b = norm.r;
                 
 
-
-                //objTex.SetPixel(tx, ty, npix);
-                objNorms.SetPixel(tx, ty, norm);
+                //objNorms.SetPixel(tx, ty, norm);
 
                 offset++;
                 dx = ptr[offset] - ptr[offset + 1];
                 dy = ptr[offset] - ptr[offset + WATERWID];
 
-                v1.z = dx;
-                v2.z = dy;
+                v1.y = dx;
+                v2.y = dy;
 
                 n = Vector3.Cross(v1, v2);
                 n.Normalize();
@@ -204,23 +203,22 @@ public class water : MonoBehaviour
                 TexPix[offset].g = npix.g;
                 TexPix[offset].b = npix.b;
                 TexPix[offset].a = 255;
-
-                //NormPix[offset].a = norm.r;
-                //NormPix[offset].g = norm.b;
-                //NormPix[offset].b = norm.b;
-
-
-
                 //objTex.SetPixel(tx + 1, ty, npix);
-                objNorms.SetPixel(tx + 1, ty, norm);
+
+                NormPix[offset].a = norm.b;
+                NormPix[offset].r = norm.r;
+                NormPix[offset].g = norm.r;
+                NormPix[offset].b = norm.r;
+
+                //objNorms.SetPixel(tx + 1, ty, norm);
 
             }
         }
 
-        //objTex.SetPixels(TexPix, 0);
+        objTex.SetPixels32(TexPix, 0);
         objTex.Apply();
 
-        //objNorms.SetPixels(NormPix, 0);
+        objNorms.SetPixels32(NormPix, 0);
         objNorms.Apply();
     }
 
