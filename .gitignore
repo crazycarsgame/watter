@@ -1,0 +1,10 @@
+
+/Library/Artifacts
+/Library/PackageCache
+/Temp
+/Library/ShaderCache
+/Logs
+Library/ArtifactDB
+Library/ArtifactDB-lock
+/Library/StateCache
+/.vs
