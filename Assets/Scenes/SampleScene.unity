@@ -418,7 +418,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7ae3bc44859e1294d9dd42828b97f4d1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  density: 60
+  density: 20
   dropradius: 32
   dropheight: 16
   dropTime: 1
