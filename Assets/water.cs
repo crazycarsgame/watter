@@ -47,7 +47,7 @@ public class water : MonoBehaviour
         Height[0] = new int[WATERWID * WATERHGT];
         Height[1] = new int[WATERWID * WATERHGT];
 
-        imgSize = WATERWID * WATERHGT * 4 * 3;
+        imgSize = WATERWID * WATERHGT * 4;
         BkGdImage = new byte[imgSize * 3];
 
         Color32 norm = new Color32();
