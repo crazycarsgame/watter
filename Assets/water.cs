@@ -121,8 +121,8 @@ public class water : MonoBehaviour
         Color32[] TexPix = objTex.GetPixels32(0);
         Color32[] NormPix = objNorms.GetPixels32(0);
 
-        Vector3 v1 = new Vector3(1, 0, 0);
-        Vector3 v2 = new Vector3(0, 0, 1);
+        Vector3 v1 = new Vector3(255, 0, 0);
+        Vector3 v2 = new Vector3(0, 0, 255);
         Vector3 n;
 
 
@@ -261,16 +261,15 @@ public class water : MonoBehaviour
     {
         int cx, cy;
         int left, top, right, bottom;
-        int square, dist;
-        int radsquare = radius * radius;
-        float length = (1.0f / (float)radius) * (1.0f / (float)radius);
+        float square, dist;
+        float radsquare = radius * radius;
+        float length = 1.0f / radsquare;
 
         if (x < 0) x = 1 + radius + Random.Range(0, (WATERWID - 2 * radius - 1));
         if (y < 0) y = 1 + radius + Random.Range(0, (WATERHGT - 2 * radius - 1));
 
 
         radsquare = (radius * radius);
-
 
         left = -radius; right = radius;
         top = -radius; bottom = radius;
@@ -289,8 +288,8 @@ public class water : MonoBehaviour
                 square = cy * cy + cx * cx;
                 if (square < radsquare)
                 {
-                    dist = (int)Mathf.Sqrt(square * length);
-                    Height[page][WATERWID * (cy + y) + cx + x] += (int)((Mathf.Cos(dist) + 1) * (height));
+                    dist = Mathf.Sqrt(square * length);
+                    Height[page][WATERWID * (cy + y) + cx + x] += (int)((Mathf.Cos(dist * Mathf.PI) + 1) * (height));
                 }
             }
         }
