@@ -23,10 +23,6 @@ public class water : MonoBehaviour
     public int dropheight = 10;
     public float dropTime = 1;
 
-    
-
-
-
     // Start is called before the first frame update
     void Start()
     {
@@ -96,7 +92,7 @@ public class water : MonoBehaviour
             int x = Random.Range(r, WATERWID - r);
             int y = Random.Range(r, WATERHGT - r);
 
-            HeightBlob(x, y, r, dropheight, Hpage);
+            SineBlob(x, y, r, dropheight, Hpage);
 
             nextDropTime = Time.fixedTime + dropTime;
         }
