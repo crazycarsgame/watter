@@ -1,5 +1,7 @@
+using System;
 using System.Runtime.InteropServices.ComTypes;
 using Unity.Collections;
+using Unity.Rendering.HybridV2;
 using UnityEngine;
 
 
@@ -8,7 +10,7 @@ public class water : MonoBehaviour
 {
 
     int [][]Height;
-    byte[] BkGdImage;
+    uint[] BkGdImage;
 
     int WATERWID;
     int WATERHGT;
@@ -18,10 +20,12 @@ public class water : MonoBehaviour
     Texture2D objTex;
     Texture2D objNorms;
 
-    public int density = 10;
-    public int dropradius = 10;
-    public int dropheight = 10;
-    public float dropTime = 1;
+    public int density = 8;
+    public int dropradius = 32;
+    public int dropheight = 64;
+    public float dropTime = 0.5f;
+    public int mode = 0;
+    public Vector3 lightPos = new Vector3(256,256,256);
 
     // Start is called before the first frame update
     void Start()
@@ -36,47 +40,47 @@ public class water : MonoBehaviour
         Renderer renderer = GetComponent<Renderer>();
 
         // This creates a special material just for this one object. If you change this material it will only affect this object:
-
         objTex = renderer.material.mainTexture as Texture2D;
         objNorms = renderer.material.GetTexture("_BumpMap") as Texture2D;
 
-        Color[] TexPix = objTex.GetPixels(0);
-
         WATERWID = objTex.width;
         WATERHGT = objTex.height;
-        Height[0] = new int[WATERWID * WATERHGT];
-        Height[1] = new int[WATERWID * WATERHGT];
+        imgSize = WATERWID * WATERHGT;
 
-        imgSize = WATERWID * WATERHGT * 4;
-        BkGdImage = new byte[imgSize * 3];
+        Height[0] = new int[imgSize];
+        Height[1] = new int[imgSize];
+        BkGdImage = new uint[imgSize * 3];
 
-        Color32 norm = new Color32();
-
-        norm.r = 0;
-        norm.g = 0;
-        norm.b = 255;
-
-
+        // copy texture to image buffer
+        Color[] TexPix = objTex.GetPixels(0);
         for (int y = 0; y < WATERHGT; y++)
         {
             for (int x = 0; x < WATERWID; x++)
             {
-                int ofs = imgSize + (y * WATERWID + x) * 4;
+                int ofs = imgSize + (y * WATERWID + x);
 
                 Color32 pix = objTex.GetPixel(x, y);
 
-                BkGdImage[ofs + 0] = pix.r;
-                BkGdImage[ofs + 1] = pix.g;
-                BkGdImage[ofs + 2] = pix.b;
-                BkGdImage[ofs + 3] = pix.a;
-
-
-                objNorms.SetPixel(x, y, norm);
-
+                BkGdImage[ofs + 0] = 0xFF000000 | (uint)((pix.r) | (pix.g << 8) | (pix.b << 16));
             }
         }
 
-        objNorms.Apply();
+        // initialize normalmap
+        if (objNorms)
+        {
+            Color32 norm = new Color32(0, 255, 0, 0);
+
+            for (int y = 0; y < WATERHGT; y++)
+            {
+                for (int x = 0; x < WATERWID; x++)
+                {
+                    objNorms.SetPixel(x, y, norm);
+                }
+            }
+            objNorms.Apply();
+        }
+        else
+            mode = 1;
 
     }
 
@@ -84,13 +88,17 @@ public class water : MonoBehaviour
     void Update()
     {
         CalcWater(Hpage ^ 1, density);
-        DrawWaterNoLight(Hpage);
 
-        if(Time.fixedTime > nextDropTime)
+        if(mode == 0)
+            DrawWaterNoLight(Hpage);
+        else
+            DrawWaterLight(Hpage, lightPos);
+
+        if (Time.fixedTime > nextDropTime)
         {
             int r = dropradius;
-            int x = Random.Range(r, WATERWID - r);
-            int y = Random.Range(r, WATERHGT - r);
+            int x = UnityEngine.Random.Range(r, WATERWID - r);
+            int y = UnityEngine.Random.Range(r, WATERHGT - r);
 
             SineBlob(x, y, r, dropheight, Hpage);
 
@@ -102,29 +110,34 @@ public class water : MonoBehaviour
 
     }
 
-
-
-
-    void DrawWaterNoLight(int page)
+    float InvSqrt(double x)
     {
+        double  xhalf = 0.5 * x;
+        long i = BitConverter.DoubleToInt64Bits(x);
+        i = 0x5f3759df - (i >> 1);
+        x = BitConverter.Int64BitsToDouble(i);
+        x = x * (1.5f - xhalf * x * x);
+        return (float)x;
+    }
 
+    void DrawWaterLight(int page, Vector3 lightPos)
+    {
         int dx, dy;
         int x, y;
-        Color32 npix = new Color32();
-        Color32 norm = new Color32();
-        byte r, g, b;
-
+        uint pix;
         int offset = WATERWID + 1;
 
         int[] ptr = Height[page];
 
         Color32[] TexPix = objTex.GetPixels32(0);
-        Color32[] NormPix = objNorms.GetPixels32(0);
+        float normX;
+        float normY;
+        float normZ;
+        float sql;
+        float il;
+        float NdL;
 
-        Vector3 v1 = new Vector3(255, 0, 0);
-        Vector3 v2 = new Vector3(0, 0, 255);
-        Vector3 n;
-
+        Vector3 vecToLight = new Vector3();
 
         for (y = (WATERHGT - 1) * WATERWID; offset < y; offset += 2)
         {
@@ -133,82 +146,149 @@ public class water : MonoBehaviour
                 int tx = offset % WATERWID;
                 int ty = offset / WATERWID;
 
-
                 dx = ptr[offset] - ptr[offset + 1];
                 dy = ptr[offset] - ptr[offset + WATERWID];
 
-                v1.y = dx;
-                v2.y = dy;
+                pix = BkGdImage[imgSize + offset + WATERWID * (dy >> 3) + (dx >> 3)];
 
-                n = Vector3.Cross(v1, v2);
-                n.Normalize();
+                normX = dx;
+                normY = 100;
+                normZ = dy;
+                sql = normX * normX + normY * normY + normZ * normZ;
+                il = 1.0f / Mathf.Sqrt(sql);
+                normX *= il;
+                normY *= il;
+                normZ *= il;
 
-                int pofs = offset + WATERWID * (dy >> 3) + (dx >> 3);
-                r = BkGdImage[imgSize + pofs * 4 + 0];
-                g = BkGdImage[imgSize + pofs * 4 + 1];
-                b = BkGdImage[imgSize + pofs * 4 + 2];
-                
-                /* If anyone knows a better/faster way to do this, please tell me... */
-                npix.r = (byte)((r < 0) ? 0 : (r > 255) ? 255 : r);
-                npix.g = (byte)((g < 0) ? 0 : (g > 255) ? 255 : g);
-                npix.b = (byte)((b < 0) ? 0 : (b > 255) ? 255 : b);
-                npix.a = 255;
+                vecToLight.x = lightPos.x - tx;
+                vecToLight.y = lightPos.y;
+                vecToLight.z = lightPos.z - ty;
+                vecToLight.Normalize();
 
-                norm.r = (byte)((n.x + 1.0) * 127);
-                norm.g = (byte)((n.y + 1.0) * 127);
-                norm.b = (byte)((n.z + 1.0) * 127);
+                NdL = Mathf.Max(0.1f, vecToLight.x * normX + vecToLight.y * normY + vecToLight.z * normZ);
 
-                
-                TexPix[offset].r = npix.r;
-                TexPix[offset].g = npix.g;
-                TexPix[offset].b = npix.b;
+                TexPix[offset].r = (byte)(Math.Min(255,(pix & 0xFF) * NdL));
+                TexPix[offset].g = (byte)(Math.Min(255, ((pix >> 8) & 0xFF) * NdL));
+                TexPix[offset].b = (byte)(Math.Min(255, ((pix >> 16) & 0xFF) * NdL));
                 TexPix[offset].a = 255;
-
                 //objTex.SetPixel(tx, ty, npix);
 
-                NormPix[offset].a = norm.b;
-                NormPix[offset].r = norm.r;
-                NormPix[offset].g = norm.r;
-                NormPix[offset].b = norm.r;
-                
 
                 //objNorms.SetPixel(tx, ty, norm);
 
                 offset++;
+                tx++;
+
                 dx = ptr[offset] - ptr[offset + 1];
                 dy = ptr[offset] - ptr[offset + WATERWID];
 
-                v1.y = dx;
-                v2.y = dy;
+                pix = BkGdImage[imgSize + offset + WATERWID * (dy >> 3) + (dx >> 3)];
 
-                n = Vector3.Cross(v1, v2);
-                n.Normalize();
+                normX = dx;
+                normY = 100;
+                normZ = dy;
+                sql = normX * normX + normY * normY + normZ * normZ;
+                il = 1.0f / Mathf.Sqrt(sql);
+                normX *= il;
+                normY *= il;
+                normZ *= il;
 
-                pofs = offset + WATERWID * (dy >> 3) + (dx >> 3);
-                r = BkGdImage[imgSize + pofs * 4 + 0];
-                g = BkGdImage[imgSize + pofs * 4 + 1];
-                b = BkGdImage[imgSize + pofs * 4 + 2];
+                vecToLight.x = lightPos.x - tx;
+                vecToLight.y = lightPos.y;
+                vecToLight.z = lightPos.z - ty;
+                vecToLight.Normalize();
 
-                npix.r = (byte)((r < 0) ? 0 : (r > 255) ? 255 : r);
-                npix.g = (byte)((g < 0) ? 0 : (g > 255) ? 255 : g);
-                npix.b = (byte)((b < 0) ? 0 : (b > 255) ? 255 : b);
-                npix.a = 255;
+                NdL = Mathf.Max(0.1f, vecToLight.x * normX + vecToLight.y * normY + vecToLight.z * normZ);
 
-                norm.r = (byte)((n.x + 1.0) * 127);
-                norm.g = (byte)((n.y + 1.0) * 127);
-                norm.b = (byte)((n.z + 1.0) * 127);
-
-                
-                TexPix[offset].r = npix.r;
-                TexPix[offset].g = npix.g;
-                TexPix[offset].b = npix.b;
+                TexPix[offset].r = (byte)(Math.Min(255, (pix & 0xFF) * NdL));
+                TexPix[offset].g = (byte)(Math.Min(255, ((pix >> 8) & 0xFF) * NdL));
+                TexPix[offset].b = (byte)(Math.Min(255, ((pix >> 16) & 0xFF) * NdL));
                 TexPix[offset].a = 255;
-                //objTex.SetPixel(tx + 1, ty, npix);
 
-                NormPix[offset].a = norm.b;
-                NormPix[offset].r = norm.r;
-                NormPix[offset].g = norm.r;
-                NormPix[offset].b = norm.r;
+                //objNorms.SetPixel(tx + 1, ty, norm);
+
+            }
+        }
+
+        objTex.SetPixels32(TexPix, 0);
+        objTex.Apply();
+    }
+
+    void DrawWaterNoLight(int page)
+    {
+        int dx, dy;
+        int x, y;
+        uint pix;
+        int offset = WATERWID + 1;
+
+        int[] ptr = Height[page];
+
+        Color32[] TexPix = objTex.GetPixels32(0);
+        Color32[] NormPix = objNorms.GetPixels32(0);
+
+        float normX;
+        float normY = 100;
+        float normZ;
+        float sql;
+        float il;
+
+        for (y = (WATERHGT - 1) * WATERWID; offset < y; offset += 2)
+        {
+            for (x = offset + WATERWID - 2; offset < x; offset++)
+            {
+                //int tx = offset % WATERWID;
+                //int ty = offset / WATERWID;
+
+                dx = ptr[offset] - ptr[offset + 1];
+                dy = ptr[offset] - ptr[offset + WATERWID];
+
+                pix = BkGdImage[imgSize + offset + WATERWID * (dy >> 3) + (dx >> 3)];
+
+                TexPix[offset].r = (byte)(pix & 0xFF);
+                TexPix[offset].g = (byte)((pix >> 8) & 0xFF);
+                TexPix[offset].b = (byte)((pix >> 16) & 0xFF);
+                TexPix[offset].a = 255;
+                //objTex.SetPixel(tx, ty, npix);
+
+                normX = dx;
+                normZ = dy;
+                sql = normX * normX + 10000 + normZ * normZ;
+                il = 1.0f / Mathf.Sqrt(sql);
+                normX *= il;
+                normZ *= il;
+
+                NormPix[offset].a = (byte)((normZ + 1.0) * 127);
+                NormPix[offset].r = (byte)((normX + 1.0) * 127);
+                NormPix[offset].g = NormPix[offset].r;
+                NormPix[offset].b = NormPix[offset].r;
+
+
+                //objNorms.SetPixel(tx, ty, norm);
+
+                offset++;
+
+                dx = ptr[offset] - ptr[offset + 1];
+                dy = ptr[offset] - ptr[offset + WATERWID];
+
+                pix = BkGdImage[imgSize + offset + WATERWID * (dy >> 3) + (dx >> 3)];
+
+                TexPix[offset].r = (byte)(pix & 0xFF);
+                TexPix[offset].g = (byte)((pix >> 8) & 0xFF);
+                TexPix[offset].b = (byte)((pix >> 16) & 0xFF);
+                TexPix[offset].a = 255;
+                //objTex.SetPixel(tx, ty, npix);
+
+                normX = dx;
+                normZ = dy;
+                sql = normX * normX + 10000 + normZ * normZ;
+                il = 1.0f / Mathf.Sqrt(sql);
+                normX *= il;
+                normZ *= il;
+
+                NormPix[offset].a = (byte)((normZ + 1.0) * 127);
+                NormPix[offset].r = (byte)((normX + 1.0) * 127);
+                NormPix[offset].g = NormPix[offset].r;
+                NormPix[offset].b = NormPix[offset].r;
 
                 //objNorms.SetPixel(tx + 1, ty, norm);
 
@@ -233,8 +313,8 @@ public class water : MonoBehaviour
         rquad = radius * radius;
 
         /* Make a randomly-placed blob... */
-        if (x < 0) x = 1 + radius + Random.Range(0, (WATERWID - 2 * radius - 1));
-        if (y < 0) y = 1 + radius + Random.Range(0, (WATERHGT - 2 * radius - 1));
+        if (x < 0) x = UnityEngine.Random.Range(1 + radius, (WATERWID - 2 * radius - 1));
+        if (y < 0) y = UnityEngine.Random.Range(1 + radius, (WATERHGT - 2 * radius - 1));
 
         left = -radius; right = radius;
         top = -radius; bottom = radius;
@@ -265,8 +345,8 @@ public class water : MonoBehaviour
         float radsquare = radius * radius;
         float length = 1.0f / radsquare;
 
-        if (x < 0) x = 1 + radius + Random.Range(0, (WATERWID - 2 * radius - 1));
-        if (y < 0) y = 1 + radius + Random.Range(0, (WATERHGT - 2 * radius - 1));
+        if (x < 0) x = UnityEngine.Random.Range(1 + radius, (WATERWID - 2 * radius - 1));
+        if (y < 0) y = UnityEngine.Random.Range(1 + radius, (WATERHGT - 2 * radius - 1));
 
 
         radsquare = (radius * radius);
